@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lift55">
+<title>Lift55</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root {
+  --bg: #0d0d0d;
+  --surface: #1c1c1e;
+  --surface2: #2c2c2e;
+  --border: #38383a;
+  --text: #ffffff;
+  --text2: #8e8e93;
+  --accent: #ff6b35;
+  --success: #30d158;
+  --danger: #ff453a;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-h: calc(56px + var(--safe-bottom));
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+#app { display: flex; flex-direction: column; height: 100%; max-width: 430px; margin: 0 auto; }
+#content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--nav-h); }
+
+/* Toast */
+#toast { position: fixed; top: calc(var(--safe-top) + 16px); left: 50%; transform: translateX(-50%); background: var(--surface2); color: var(--text); padding: 11px 18px; border-radius: 12px; font-size: 14px; z-index: 999; white-space: nowrap; transition: opacity 0.25s; }
+#toast.hidden { opacity: 0; pointer-events: none; }
+
+/* Nav */
+#nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; height: var(--nav-h); background: rgba(18,18,20,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--border); display: flex; align-items: flex-start; padding-top: 6px; z-index: 100; }
+.nav-btn { flex: 1; background: none; border: none; color: var(--text2); display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; cursor: pointer; font-size: 10px; transition: color 0.15s; }
+.nav-btn.active { color: var(--accent); }
+.nav-btn svg { width: 22px; height: 22px; }
+
+/* Page header */
+.ph { padding: calc(var(--safe-top) + 14px) 16px 0; display: flex; align-items: center; gap: 12px; }
+.ph-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
+.ph-sub { font-size: 13px; color: var(--text2); margin-top: 3px; }
+.back { width: 34px; height: 34px; border-radius: 10px; background: var(--surface2); border: none; color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+
+/* Cards */
+.card { background: var(--surface); border-radius: 16px; margin: 12px 16px; overflow: hidden; }
+.card-inner { padding: 16px; }
+.card-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px; }
+
+/* Section */
+.sec-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 5px; }
+.sec-title { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.7px; font-weight: 600; }
+
+/* List */
+.list { background: var(--surface); border-radius: 14px; margin: 4px 16px; overflow: hidden; }
+.row { display: flex; align-items: center; padding: 13px 16px; border-bottom: 1px solid var(--border); gap: 12px; }
+.row:last-child { border-bottom: none; }
+a.row, button.row, [onclick].row { cursor: pointer; }
+[onclick].row:active, a.row:active { background: var(--surface2); }
+.row-main { flex: 1; }
+.row-title { font-size: 16px; font-weight: 500; }
+.row-sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.chev { color: var(--text2); }
+.chev svg { width: 15px; height: 15px; display: block; }
+
+/* Buttons */
+.btn { display: block; width: calc(100% - 32px); margin: 8px 16px; padding: 15px; border: none; border-radius: 14px; font-size: 17px; font-weight: 600; cursor: pointer; text-align: center; transition: opacity 0.12s, transform 0.1s; letter-spacing: -0.2px; }
+.btn:active { opacity: 0.8; transform: scale(0.98); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--surface2); color: var(--text); }
+.btn-success { background: var(--success); color: #000; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 9px 16px; font-size: 14px; border-radius: 10px; }
+
+/* Home: next workout preview */
+.ex-preview-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); gap: 10px; }
+.ex-preview-row:last-child { border-bottom: none; }
+.ex-preview-name { flex: 1; font-size: 16px; font-weight: 500; }
+.ex-preview-sets { font-size: 13px; color: var(--text2); }
+.ex-preview-weight { font-size: 15px; font-weight: 700; color: var(--accent); min-width: 72px; text-align: right; }
+
+/* Active workout */
+.ex-block { background: var(--surface); border-radius: 16px; margin: 8px 16px; overflow: hidden; }
+.ex-block-hdr { padding: 14px 16px 10px; }
+.ex-block-name { font-size: 18px; font-weight: 700; }
+.ex-block-target { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.weight-ctrl { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--border); }
+.weight-ctrl-label { font-size: 13px; color: var(--text2); flex-shrink: 0; }
+.weight-ctrl-row { display: flex; align-items: center; gap: 8px; flex: 1; }
+.wbtn { width: 38px; height: 38px; border-radius: 10px; background: var(--surface2); border: none; color: var(--text); font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; line-height: 1; }
+.winput { flex: 1; background: var(--surface2); border: none; color: var(--text); font-size: 20px; font-weight: 700; text-align: center; padding: 7px 4px; border-radius: 10px; outline: none; min-width: 0; }
+.wunit { font-size: 14px; color: var(--text2); flex-shrink: 0; }
+.sets-row { display: flex; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--border); }
+.set-btn { flex: 1; height: 56px; border-radius: 12px; border: 2px solid var(--border); background: transparent; color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.set-btn.done { background: var(--success); border-color: var(--success); color: #000; }
+
+/* History */
+.hist-item { padding: 13px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.hist-item:last-child { border-bottom: none; }
+.hist-item:active { background: var(--surface2); }
+.hist-date { font-size: 12px; color: var(--text2); margin-bottom: 3px; }
+.hist-name { font-size: 17px; font-weight: 600; }
+.hist-sub { font-size: 13px; color: var(--text2); margin-top: 3px; }
+
+/* Forms */
+.fg { margin: 8px 16px; }
+.fg + .fg { margin-top: 4px; }
+.fl { font-size: 13px; color: var(--text2); margin-bottom: 6px; display: block; }
+.fi { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 16px; padding: 12px 14px; border-radius: 12px; outline: none; -webkit-appearance: none; appearance: none; }
+.fi:focus { border-color: var(--accent); }
+.form-row { display: flex; gap: 0; }
+.form-row .fg { flex: 1; }
+.form-row .fg:first-child { margin-right: 4px; }
+.form-row .fg:last-child { margin-left: 4px; }
+
+/* Toggle */
+.toggle { display: flex; background: var(--surface2); border-radius: 10px; padding: 2px; }
+.topt { flex: 1; padding: 8px; text-align: center; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; background: none; color: var(--text2); transition: all 0.18s; }
+.topt.on { background: var(--surface); color: var(--text); }
+
+/* Settings rows */
+.srow { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; background: var(--surface); }
+.srow:last-child { border-bottom: none; }
+.srow:active { background: var(--surface2); }
+.srow-label { flex: 1; font-size: 16px; }
+.srow-val { font-size: 16px; color: var(--text2); }
+.srow-chev svg { width: 14px; height: 14px; display: block; color: var(--text2); margin-left: 8px; }
+
+/* Schedule */
+.sched-num { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+
+/* Modal */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; display: flex; align-items: flex-end; }
+.modal { background: var(--surface); width: 100%; border-radius: 20px 20px 0 0; padding: 20px 0 calc(16px + var(--safe-bottom)); max-height: 80vh; overflow-y: auto; }
+.modal-title { font-size: 18px; font-weight: 700; padding: 0 16px 14px; }
+
+/* Detail set badges */
+.set-badge { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+
+/* Empty */
+.empty { text-align: center; padding: 56px 32px; color: var(--text2); }
+.empty-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.empty-sub { font-size: 14px; line-height: 1.5; }
+
+/* Spacer */
+.gap { height: 16px; }
+.gap-sm { height: 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toast" class="hidden"></div>
+  <div id="content"></div>
+  <nav id="nav">
+    <button class="nav-btn" id="nav-home" onclick="App.go('home')">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      Home
+    </button>
+    <button class="nav-btn" id="nav-history" onclick="App.go('history')">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21L13.5 12V8H12z"/></svg>
+      History
+    </button>
+    <button class="nav-btn" id="nav-settings" onclick="App.go('settings')">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      Settings
+    </button>
+  </nav>
+</div>
+<script>
+// ── IndexedDB ────────────────────────────────────────────────────────────────
+const DB = (() => {
+  let db;
+  const open = () => new Promise((res, rej) => {
+    const req = indexedDB.open('lift55', 1);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      ['exercises','workouts','logs','settings'].forEach(s => {
+        if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' });
+      });
+    };
+    req.onsuccess = e => { db = e.target.result; res(); };
+    req.onerror = rej;
+  });
+  const tx = (s, m = 'readonly') => db.transaction(s, m).objectStore(s);
+  const all = s => new Promise((r, j) => { const q = tx(s).getAll(); q.onsuccess = () => r(q.result); q.onerror = j; });
+  const get = (s, k) => new Promise((r, j) => { const q = tx(s).get(k); q.onsuccess = () => r(q.result); q.onerror = j; });
+  const put = (s, o) => new Promise((r, j) => { const q = tx(s, 'readwrite').put(o); q.onsuccess = () => r(q.result); q.onerror = j; });
+  const del = (s, k) => new Promise((r, j) => { const q = tx(s, 'readwrite').delete(k); q.onsuccess = () => r(); q.onerror = j; });
+  return { open, all, get, put, del };
+})();
+
+// ── App ──────────────────────────────────────────────────────────────────────
+const App = {
+  page: 'home',
+  pd: {}, // page data
+  aw: null, // active workout
+
+  async init() {
+    await DB.open();
+    await this.seedDefaults();
+    const saved = localStorage.getItem('lift55_aw');
+    if (saved) { try { this.aw = JSON.parse(saved); } catch {} }
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    this.render();
+  },
+
+  go(page, data = {}) {
+    this.page = page;
+    this.pd = data;
+    this.render();
+    document.getElementById('content').scrollTo(0, 0);
+  },
+
+  async render() {
+    const map = {
+      home: 'renderHome', 'workout-active': 'renderActive',
+      history: 'renderHistory', 'history-detail': 'renderHistoryDetail',
+      settings: 'renderSettings', exercises: 'renderExercises',
+      'exercise-edit': 'renderExerciseEdit', workouts: 'renderWorkouts',
+      'workout-edit': 'renderWorkoutEdit', schedule: 'renderSchedule',
+    };
+    await this[map[this.page] || 'renderHome']();
+    ['home','history','settings'].forEach((p, i) => {
+      const btn = document.getElementById('nav-' + p);
+      if (btn) btn.classList.toggle('active', p === this.page);
+    });
+  },
+
+  toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => el.classList.add('hidden'), 2200);
+  },
+
+  uid: () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  html: s => s,
+
+  saveAW() {
+    if (this.aw) localStorage.setItem('lift55_aw', JSON.stringify(this.aw));
+    else localStorage.removeItem('lift55_aw');
+  },
+
+  // ── Seed defaults ─────────────────────────────────────────────────────────
+  async seedDefaults() {
+    const ex = await DB.all('exercises');
+    if (ex.length) return;
+    const exercises = [
+      { id: 'squat',    name: 'Squat',          increment: 5,   unit: 'lbs', startWeight: 45  },
+      { id: 'bench',    name: 'Bench Press',     increment: 2.5, unit: 'lbs', startWeight: 45  },
+      { id: 'row',      name: 'Barbell Row',     increment: 2.5, unit: 'lbs', startWeight: 45  },
+      { id: 'ohp',      name: 'Overhead Press',  increment: 2.5, unit: 'lbs', startWeight: 45  },
+      { id: 'deadlift', name: 'Deadlift',        increment: 5,   unit: 'lbs', startWeight: 95  },
+    ];
+    for (const e of exercises) await DB.put('exercises', e);
+    const workouts = [
+      { id: 'workout-a', name: 'Workout A', exercises: [
+        { exerciseId: 'squat', sets: 5, reps: 5 },
+        { exerciseId: 'bench', sets: 5, reps: 5 },
+        { exerciseId: 'row',   sets: 5, reps: 5 },
+      ]},
+      { id: 'workout-b', name: 'Workout B', exercises: [
+        { exerciseId: 'squat',    sets: 5, reps: 5 },
+        { exerciseId: 'ohp',      sets: 5, reps: 5 },
+        { exerciseId: 'deadlift', sets: 1, reps: 5 },
+      ]},
+    ];
+    for (const w of workouts) await DB.put('workouts', w);
+    await DB.put('settings', { id: 'schedule', workoutIds: ['workout-a', 'workout-b'] });
+    await DB.put('settings', { id: 'units', value: 'lbs' });
+  },
+
+  // ── Business logic ────────────────────────────────────────────────────────
+  async getNextWorkout() {
+    const [sched, logs, workouts] = await Promise.all([DB.get('settings','schedule'), DB.all('logs'), DB.all('workouts')]);
+    if (!sched || !sched.workoutIds.length) return null;
+    const ids = sched.workoutIds;
+    const wMap = Object.fromEntries(workouts.map(w => [w.id, w]));
+    if (!logs.length) return wMap[ids[0]] || null;
+    const last = logs.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const lastIdx = ids.lastIndexOf(last.workoutId);
+    const nextIdx = lastIdx === -1 ? 0 : (lastIdx + 1) % ids.length;
+    return wMap[ids[nextIdx]] || null;
+  },
+
+  async getSuggestedWeight(exerciseId) {
+    const [logs, exercise] = await Promise.all([DB.all('logs'), DB.get('exercises', exerciseId)]);
+    if (!exercise) return 0;
+    const sorted = logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    for (const log of sorted) {
+      const ex = log.exercises.find(e => e.exerciseId === exerciseId);
+      if (!ex) continue;
+      const allDone = ex.sets.length >= ex.targetSets && ex.sets.every(s => s.done);
+      return allDone ? ex.weight + exercise.increment : ex.weight;
+    }
+    return exercise.startWeight;
+  },
+
+  // ── Home ──────────────────────────────────────────────────────────────────
+  async renderHome() {
+    const [nextWorkout, exercises, logs, workouts] = await Promise.all([
+      this.getNextWorkout(), DB.all('exercises'), DB.all('logs'), DB.all('workouts'),
+    ]);
+    const exMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+    const wMap  = Object.fromEntries(workouts.map(w => [w.id, w]));
+
+    let weights = {};
+    if (nextWorkout) {
+      for (const ex of nextWorkout.exercises)
+        weights[ex.exerciseId] = await this.getSuggestedWeight(ex.exerciseId);
+    }
+
+    const recent = logs.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
+    const todayStr = new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+    const hasActive = !!this.aw;
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph"><div>
+        <div class="ph-title">Lift55</div>
+        <div class="ph-sub">${todayStr}</div>
+      </div></div>
+      <div class="gap"></div>
+
+      ${hasActive ? `
+      <div class="card" style="border:1px solid var(--accent)">
+        <div class="card-inner">
+          <div class="card-label">In Progress</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:12px">${wMap[this.aw.workoutId]?.name || 'Workout'}</div>
+        </div>
+        <button class="btn btn-primary" style="margin:0 0 0 0;border-radius:0 0 16px 16px" onclick="App.go('workout-active')">Resume Workout</button>
+      </div>` : ''}
+
+      ${nextWorkout ? `
+      <div class="card">
+        <div class="card-inner">
+          <div class="card-label">${hasActive ? 'Next Up' : 'Next Workout'}</div>
+          <div style="font-size:22px;font-weight:700;margin-bottom:2px">${nextWorkout.name}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${nextWorkout.exercises.length} exercises</div>
+          ${nextWorkout.exercises.map(ex => {
+            const e = exMap[ex.exerciseId];
+            const w = weights[ex.exerciseId];
+            return `<div class="ex-preview-row">
+              <div class="ex-preview-name">${e?.name || ex.exerciseId}</div>
+              <div class="ex-preview-sets">${ex.sets}&times;${ex.reps}</div>
+              <div class="ex-preview-weight">${w} ${e?.unit||'lbs'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${!hasActive ? `<button class="btn btn-primary" style="margin:0 16px 16px" onclick="App.startWorkout('${nextWorkout.id}')">Start Workout</button>` : ''}
+      </div>` : `
+      <div class="card"><div class="empty">
+        <div class="empty-title">No schedule set</div>
+        <div class="empty-sub">Go to Settings &rarr; Schedule to add workouts.</div>
+      </div></div>`}
+
+      ${recent.length ? `
+      <div class="sec-hdr"><span class="sec-title">Recent</span></div>
+      <div class="list">
+        ${recent.map(log => {
+          const w = wMap[log.workoutId];
+          const d = new Date(log.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+          const done = log.exercises.reduce((s,e) => s + e.sets.filter(x=>x.done).length, 0);
+          const total = log.exercises.reduce((s,e) => s + e.targetSets, 0);
+          return `<div class="hist-item" onclick="App.go('history-detail',{logId:'${log.id}'})">
+            <div class="hist-date">${d}</div>
+            <div class="hist-name">${w?.name||'Workout'}</div>
+            <div class="hist-sub">${done}/${total} sets completed</div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+      <div class="gap"></div>
+    `;
+  },
+
+  async startWorkout(workoutId) {
+    const workout = await DB.get('workouts', workoutId);
+    const exs = [];
+    for (const ex of workout.exercises) {
+      const w = await this.getSuggestedWeight(ex.exerciseId);
+      exs.push({ exerciseId: ex.exerciseId, weight: w, targetSets: ex.sets, targetReps: ex.reps,
+        sets: Array.from({length: ex.sets}, () => ({done: false})) });
+    }
+    this.aw = { workoutId, date: new Date().toISOString(), exercises: exs };
+    this.saveAW();
+    this.go('workout-active');
+  },
+
+  // ── Active Workout ────────────────────────────────────────────────────────
+  async renderActive() {
+    if (!this.aw) { this.go('home'); return; }
+    const [workout, exercises] = await Promise.all([DB.get('workouts', this.aw.workoutId), DB.all('exercises')]);
+    const exMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+    const aw = this.aw;
+    const done  = aw.exercises.reduce((s,e) => s + e.sets.filter(x=>x.done).length, 0);
+    const total = aw.exercises.reduce((s,e) => s + e.targetSets, 0);
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('home')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div>
+          <div class="ph-title">${workout?.name||'Workout'}</div>
+          <div class="ph-sub">${done}/${total} sets done</div>
+        </div>
+      </div>
+      <div class="gap"></div>
+
+      ${aw.exercises.map((ex, ei) => {
+        const e = exMap[ex.exerciseId];
+        const inc = e?.increment || 2.5;
+        return `
+        <div class="ex-block">
+          <div class="ex-block-hdr">
+            <div class="ex-block-name">${e?.name||ex.exerciseId}</div>
+            <div class="ex-block-target">${ex.targetSets} sets &times; ${ex.targetReps} reps</div>
+          </div>
+          <div class="weight-ctrl">
+            <span class="weight-ctrl-label">Weight</span>
+            <div class="weight-ctrl-row">
+              <button class="wbtn" onclick="App.adjW(${ei},${-inc})">&#8722;</button>
+              <input class="winput" id="wi-${ei}" type="number" value="${ex.weight}"
+                onchange="App.setW(${ei},+this.value)" oninput="App.setW(${ei},+this.value)">
+              <button class="wbtn" onclick="App.adjW(${ei},${inc})">+</button>
+              <span class="wunit">${e?.unit||'lbs'}</span>
+            </div>
+          </div>
+          <div class="sets-row">
+            ${ex.sets.map((s, si) => `
+              <button class="set-btn${s.done?' done':''}" onclick="App.toggleSet(${ei},${si})">
+                ${s.done
+                  ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`
+                  : `<span style="font-size:16px;font-weight:700">${si+1}</span><span style="font-size:10px;color:var(--text2)">${ex.targetReps} reps</span>`
+                }
+              </button>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+
+      <div class="gap"></div>
+      <button class="btn btn-success" onclick="App.finishWorkout()">Finish Workout</button>
+      <button class="btn btn-secondary" onclick="App.discardWorkout()">Discard</button>
+      <div class="gap"></div>
+    `;
+  },
+
+  adjW(ei, delta) {
+    const ex = this.aw.exercises[ei];
+    ex.weight = Math.max(0, Math.round((ex.weight + delta) * 4) / 4);
+    this.saveAW();
+    const inp = document.getElementById('wi-' + ei);
+    if (inp) inp.value = ex.weight;
+  },
+
+  setW(ei, val) {
+    if (!isNaN(val) && val >= 0) { this.aw.exercises[ei].weight = val; this.saveAW(); }
+  },
+
+  toggleSet(ei, si) {
+    this.aw.exercises[ei].sets[si].done = !this.aw.exercises[ei].sets[si].done;
+    this.saveAW();
+    this.renderActive();
+  },
+
+  async finishWorkout() {
+    const aw = this.aw;
+    await DB.put('logs', {
+      id: this.uid(), workoutId: aw.workoutId, date: aw.date,
+      exercises: aw.exercises.map(ex => ({
+        exerciseId: ex.exerciseId, weight: ex.weight,
+        targetSets: ex.targetSets, targetReps: ex.targetReps, sets: ex.sets,
+      })),
+    });
+    this.aw = null; this.saveAW();
+    this.toast('Workout saved!');
+    this.go('home');
+  },
+
+  discardWorkout() {
+    if (!confirm('Discard this workout?')) return;
+    this.aw = null; this.saveAW();
+    this.go('home');
+  },
+
+  // ── History ───────────────────────────────────────────────────────────────
+  async renderHistory() {
+    const [logs, workouts] = await Promise.all([DB.all('logs'), DB.all('workouts')]);
+    const wMap = Object.fromEntries(workouts.map(w => [w.id, w]));
+    const sorted = logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph"><div class="ph-title">History</div></div>
+      <div class="gap"></div>
+      ${sorted.length ? `
+      <div class="list">
+        ${sorted.map(log => {
+          const w = wMap[log.workoutId];
+          const d = new Date(log.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'});
+          const done  = log.exercises.reduce((s,e) => s + e.sets.filter(x=>x.done).length, 0);
+          const total = log.exercises.reduce((s,e) => s + e.targetSets, 0);
+          return `<div class="hist-item" onclick="App.go('history-detail',{logId:'${log.id}'})">
+            <div class="hist-date">${d}</div>
+            <div class="hist-name">${w?.name||'Workout'}</div>
+            <div class="hist-sub">${done}/${total} sets completed</div>
+          </div>`;
+        }).join('')}
+      </div>` : `
+      <div class="empty">
+        <div class="empty-title">No workouts yet</div>
+        <div class="empty-sub">Complete a workout to start building your history.</div>
+      </div>`}
+      <div class="gap"></div>
+    `;
+  },
+
+  async renderHistoryDetail() {
+    const { logId } = this.pd;
+    const [log, exercises, workouts] = await Promise.all([DB.get('logs', logId), DB.all('exercises'), DB.all('workouts')]);
+    if (!log) { this.go('history'); return; }
+    const exMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+    const wMap  = Object.fromEntries(workouts.map(w => [w.id, w]));
+    const d = new Date(log.date).toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('history')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div>
+          <div class="ph-title">${wMap[log.workoutId]?.name||'Workout'}</div>
+          <div class="ph-sub">${d}</div>
+        </div>
+      </div>
+      <div class="gap"></div>
+      ${log.exercises.map(ex => {
+        const e = exMap[ex.exerciseId];
+        const done = ex.sets.filter(s=>s.done).length;
+        return `
+        <div class="ex-block">
+          <div class="ex-block-hdr">
+            <div class="ex-block-name">${e?.name||ex.exerciseId}</div>
+            <div class="ex-block-target">${ex.weight} ${e?.unit||'lbs'} &nbsp;&middot;&nbsp; ${done}/${ex.targetSets} sets of ${ex.targetReps} reps</div>
+          </div>
+          <div style="padding:10px 16px 14px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)">
+            ${ex.sets.map((s,i) => `
+              <div class="set-badge" style="background:${s.done?'var(--success)':'var(--surface2)'};color:${s.done?'#000':'var(--text2)'}">
+                ${s.done ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' : i+1}
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+      <div class="gap"></div>
+      <button class="btn btn-danger" onclick="App.deleteLog('${log.id}')">Delete Record</button>
+      <div class="gap"></div>
+    `;
+  },
+
+  async deleteLog(id) {
+    if (!confirm('Delete this workout record?')) return;
+    await DB.del('logs', id);
+    this.toast('Deleted');
+    this.go('history');
+  },
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+  async renderSettings() {
+    const units = await DB.get('settings', 'units');
+    const u = units?.value || 'lbs';
+    document.getElementById('content').innerHTML = `
+      <div class="ph"><div class="ph-title">Settings</div></div>
+      <div class="gap"></div>
+      <div class="list">
+        <div class="srow" onclick="App.go('exercises')">
+          <span class="srow-label">Exercises</span>
+          <span class="srow-chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></span>
+        </div>
+        <div class="srow" onclick="App.go('workouts')">
+          <span class="srow-label">Workouts</span>
+          <span class="srow-chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></span>
+        </div>
+        <div class="srow" onclick="App.go('schedule')">
+          <span class="srow-label">Schedule</span>
+          <span class="srow-chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></span>
+        </div>
+      </div>
+      <div class="sec-hdr" style="margin-top:16px"><span class="sec-title">Units</span></div>
+      <div style="margin:4px 16px">
+        <div class="toggle">
+          <button class="topt${u==='lbs'?' on':''}" onclick="App.setUnits('lbs')">lbs</button>
+          <button class="topt${u==='kg'?' on':''}" onclick="App.setUnits('kg')">kg</button>
+        </div>
+      </div>
+      <div class="gap"></div>
+    `;
+  },
+
+  async setUnits(val) {
+    await DB.put('settings', { id: 'units', value: val });
+    this.renderSettings();
+  },
+
+  // ── Exercises ─────────────────────────────────────────────────────────────
+  async renderExercises() {
+    const exercises = await DB.all('exercises');
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('settings')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div class="ph-title">Exercises</div>
+      </div>
+      <div class="gap"></div>
+      ${exercises.length ? `
+      <div class="list">
+        ${exercises.map(e => `
+          <div class="row" onclick="App.go('exercise-edit',{exerciseId:'${e.id}'})">
+            <div class="row-main">
+              <div class="row-title">${e.name}</div>
+              <div class="row-sub">Start: ${e.startWeight} ${e.unit} &nbsp;&middot;&nbsp; +${e.increment} ${e.unit} per success</div>
+            </div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>`).join('')}
+      </div>` : `<div class="empty"><div class="empty-title">No exercises yet</div></div>`}
+      <button class="btn btn-secondary" style="margin-top:12px" onclick="App.go('exercise-edit',{exerciseId:null})">Add Exercise</button>
+      <div class="gap"></div>
+    `;
+  },
+
+  async renderExerciseEdit() {
+    const { exerciseId } = this.pd;
+    const ex = exerciseId ? await DB.get('exercises', exerciseId) : null;
+    this._unit = ex?.unit || 'lbs';
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('exercises')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div class="ph-title">${ex ? 'Edit Exercise' : 'New Exercise'}</div>
+      </div>
+      <div class="gap"></div>
+      <div class="fg"><label class="fl">Name</label>
+        <input class="fi" id="ex-name" type="text" placeholder="e.g. Squat" value="${ex?.name||''}">
+      </div>
+      <div class="form-row">
+        <div class="fg"><label class="fl">Starting Weight</label>
+          <input class="fi" id="ex-start" type="number" placeholder="45" value="${ex?.startWeight||''}">
+        </div>
+        <div class="fg"><label class="fl">Increment</label>
+          <input class="fi" id="ex-inc" type="number" placeholder="5" step="0.5" value="${ex?.increment||''}">
+        </div>
+      </div>
+      <div class="fg"><label class="fl">Unit</label>
+        <div class="toggle">
+          <button class="topt${this._unit==='lbs'?' on':''}" id="u-lbs" onclick="App.pickUnit('lbs')">lbs</button>
+          <button class="topt${this._unit==='kg'?' on':''}" id="u-kg" onclick="App.pickUnit('kg')">kg</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="App.saveExercise('${exerciseId||''}')">Save</button>
+      ${ex ? `<button class="btn btn-danger" onclick="App.deleteExercise('${exerciseId}')">Delete Exercise</button>` : ''}
+      <div class="gap"></div>
+    `;
+  },
+
+  pickUnit(u) {
+    this._unit = u;
+    document.getElementById('u-lbs').classList.toggle('on', u === 'lbs');
+    document.getElementById('u-kg').classList.toggle('on', u === 'kg');
+  },
+
+  async saveExercise(exerciseId) {
+    const name = document.getElementById('ex-name').value.trim();
+    const startWeight = parseFloat(document.getElementById('ex-start').value);
+    const increment = parseFloat(document.getElementById('ex-inc').value);
+    const unit = this._unit || 'lbs';
+    if (!name) { this.toast('Enter a name'); return; }
+    if (isNaN(startWeight) || isNaN(increment)) { this.toast('Fill in all fields'); return; }
+    await DB.put('exercises', { id: exerciseId || this.uid(), name, startWeight, increment, unit });
+    this.toast('Saved');
+    this.go('exercises');
+  },
+
+  async deleteExercise(id) {
+    if (!confirm('Delete this exercise?')) return;
+    await DB.del('exercises', id);
+    const ws = await DB.all('workouts');
+    for (const w of ws) {
+      w.exercises = w.exercises.filter(e => e.exerciseId !== id);
+      await DB.put('workouts', w);
+    }
+    this.toast('Deleted');
+    this.go('exercises');
+  },
+
+  // ── Workouts ──────────────────────────────────────────────────────────────
+  async renderWorkouts() {
+    const workouts = await DB.all('workouts');
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('settings')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div class="ph-title">Workouts</div>
+      </div>
+      <div class="gap"></div>
+      ${workouts.length ? `
+      <div class="list">
+        ${workouts.map(w => `
+          <div class="row" onclick="App.go('workout-edit',{workoutId:'${w.id}'})">
+            <div class="row-main">
+              <div class="row-title">${w.name}</div>
+              <div class="row-sub">${w.exercises.length} exercise${w.exercises.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>`).join('')}
+      </div>` : `<div class="empty"><div class="empty-title">No workouts yet</div></div>`}
+      <button class="btn btn-secondary" style="margin-top:12px" onclick="App.go('workout-edit',{workoutId:null})">Add Workout</button>
+      <div class="gap"></div>
+    `;
+  },
+
+  async renderWorkoutEdit() {
+    const { workoutId } = this.pd;
+    const [workout, exercises] = await Promise.all([
+      workoutId ? DB.get('workouts', workoutId) : Promise.resolve(null),
+      DB.all('exercises'),
+    ]);
+    // Init editing state only on fresh load (not re-render)
+    if (this._weId !== (workoutId || '__new__')) {
+      this._weId = workoutId || '__new__';
+      this._weName = workout?.name || '';
+      this._weExs = workout ? workout.exercises.map(e => ({...e})) : [];
+    }
+    const exMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('workouts')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div class="ph-title">${workout ? 'Edit Workout' : 'New Workout'}</div>
+      </div>
+      <div class="gap"></div>
+      <div class="fg"><label class="fl">Workout Name</label>
+        <input class="fi" id="w-name" type="text" placeholder="e.g. Workout A" value="${this._weName}"
+          oninput="App._weName=this.value">
+      </div>
+      <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Exercises</span></div>
+      ${this._weExs.map((we, i) => {
+        const e = exMap[we.exerciseId];
+        return `
+        <div class="ex-block">
+          <div style="display:flex;align-items:center;padding:12px 16px;gap:10px">
+            <div style="flex:1;font-size:16px;font-weight:600">${e?.name||we.exerciseId}</div>
+            <button onclick="App.removeWE(${i})" style="background:none;border:none;color:var(--danger);font-size:22px;cursor:pointer;padding:2px 6px;line-height:1">&times;</button>
+          </div>
+          <div style="display:flex;gap:8px;padding:0 16px 14px;border-top:1px solid var(--border)">
+            <div style="flex:1">
+              <div class="fl">Sets</div>
+              <input class="fi" type="number" min="1" value="${we.sets}" onchange="App.updWE(${i},'sets',+this.value)">
+            </div>
+            <div style="flex:1">
+              <div class="fl">Reps</div>
+              <input class="fi" type="number" min="1" value="${we.reps}" onchange="App.updWE(${i},'reps',+this.value)">
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-secondary" onclick="App.showExModal()">+ Add Exercise</button>
+      <button class="btn btn-primary" style="margin-top:8px" onclick="App.saveWorkout('${workoutId||''}')">Save Workout</button>
+      ${workout ? `<button class="btn btn-danger" onclick="App.deleteWorkout('${workoutId}')">Delete Workout</button>` : ''}
+      <div class="gap"></div>
+    `;
+  },
+
+  updWE(i, field, val) { this._weExs[i][field] = val; },
+  removeWE(i) {
+    this._weName = document.getElementById('w-name')?.value || this._weName;
+    this._weExs.splice(i, 1);
+    this.renderWorkoutEdit();
+  },
+
+  async showExModal() {
+    this._weName = document.getElementById('w-name')?.value || this._weName;
+    const exercises = await DB.all('exercises');
+    const m = document.createElement('div');
+    m.className = 'modal-bg'; m.id = 'ex-modal';
+    m.innerHTML = `<div class="modal">
+      <div class="modal-title">Add Exercise</div>
+      <div class="list" style="margin:0 0 0 0;border-radius:0">
+        ${exercises.map(e => `
+          <div class="row" onclick="App.addWE('${e.id}')">
+            <div class="row-main">
+              <div class="row-title">${e.name}</div>
+              <div class="row-sub">+${e.increment} ${e.unit} per success</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      <button class="btn btn-secondary" style="margin-top:12px" onclick="document.getElementById('ex-modal').remove()">Cancel</button>
+    </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+  },
+
+  addWE(exerciseId) {
+    document.getElementById('ex-modal')?.remove();
+    this._weExs.push({ exerciseId, sets: 3, reps: 5 });
+    this.renderWorkoutEdit();
+  },
+
+  async saveWorkout(workoutId) {
+    const name = (document.getElementById('w-name')?.value || this._weName).trim();
+    if (!name) { this.toast('Enter a workout name'); return; }
+    await DB.put('workouts', { id: workoutId || this.uid(), name, exercises: this._weExs });
+    this._weId = null;
+    this.toast('Saved');
+    this.go('workouts');
+  },
+
+  async deleteWorkout(id) {
+    if (!confirm('Delete this workout?')) return;
+    await DB.del('workouts', id);
+    const sched = await DB.get('settings', 'schedule');
+    if (sched) { sched.workoutIds = sched.workoutIds.filter(x => x !== id); await DB.put('settings', sched); }
+    this._weId = null;
+    this.toast('Deleted');
+    this.go('workouts');
+  },
+
+  // ── Schedule ──────────────────────────────────────────────────────────────
+  async renderSchedule() {
+    const [sched, workouts] = await Promise.all([DB.get('settings','schedule'), DB.all('workouts')]);
+    const ids = sched?.workoutIds || [];
+    const wMap = Object.fromEntries(workouts.map(w => [w.id, w]));
+
+    document.getElementById('content').innerHTML = `
+      <div class="ph">
+        <button class="back" onclick="App.go('settings')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <div>
+          <div class="ph-title">Schedule</div>
+          <div class="ph-sub">Repeating workout rotation</div>
+        </div>
+      </div>
+      <div class="gap"></div>
+      <div class="sec-hdr"><span class="sec-title">Current Order</span></div>
+      <div class="list">
+        ${ids.length ? ids.map((wid, i) => `
+          <div class="row">
+            <div class="sched-num">${i+1}</div>
+            <div class="row-main"><div class="row-title">${wMap[wid]?.name||wid}</div></div>
+            <button onclick="App.removeFromSched(${i})" style="background:none;border:none;color:var(--danger);font-size:14px;font-weight:600;cursor:pointer;padding:6px 10px">Remove</button>
+          </div>`).join('') : `
+          <div style="padding:18px 16px;color:var(--text2);text-align:center;font-size:14px">No workouts in schedule yet</div>`}
+      </div>
+      <div class="sec-hdr" style="margin-top:16px"><span class="sec-title">Add to Rotation</span></div>
+      <div class="list">
+        ${workouts.map(w => `
+          <div class="row" onclick="App.addToSched('${w.id}')">
+            <div class="row-main"><div class="row-title">${w.name}</div></div>
+            <div style="color:var(--accent);font-weight:700;font-size:14px">+ Add</div>
+          </div>`).join('')}
+      </div>
+      <div class="gap"></div>
+    `;
+  },
+
+  async addToSched(workoutId) {
+    const sched = await DB.get('settings','schedule') || { id: 'schedule', workoutIds: [] };
+    sched.workoutIds.push(workoutId);
+    await DB.put('settings', sched);
+    this.renderSchedule();
+  },
+
+  async removeFromSched(idx) {
+    const sched = await DB.get('settings','schedule');
+    if (!sched) return;
+    sched.workoutIds.splice(idx, 1);
+    await DB.put('settings', sched);
+    this.renderSchedule();
+  },
+};
+
+App.init();
+</script>
+</body>
+</html>
