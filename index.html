@@ -249,11 +249,11 @@ const App = {
     const ex = await DB.all('exercises');
     if (ex.length) return;
     const exercises = [
-      { id: 'squat',    name: 'Squat',          increment: 5,   unit: 'lbs', startWeight: 45  },
-      { id: 'bench',    name: 'Bench Press',     increment: 2.5, unit: 'lbs', startWeight: 45  },
-      { id: 'row',      name: 'Barbell Row',     increment: 2.5, unit: 'lbs', startWeight: 45  },
-      { id: 'ohp',      name: 'Overhead Press',  increment: 2.5, unit: 'lbs', startWeight: 45  },
-      { id: 'deadlift', name: 'Deadlift',        increment: 5,   unit: 'lbs', startWeight: 95  },
+      { id: 'squat',    name: 'Squat',          increment: 2.5, unit: 'kg', startWeight: 20 },
+      { id: 'bench',    name: 'Bench Press',     increment: 2.5, unit: 'kg', startWeight: 20 },
+      { id: 'row',      name: 'Barbell Row',     increment: 2.5, unit: 'kg', startWeight: 20 },
+      { id: 'ohp',      name: 'Overhead Press',  increment: 2.5, unit: 'kg', startWeight: 20 },
+      { id: 'deadlift', name: 'Deadlift',        increment: 2.5, unit: 'kg', startWeight: 40 },
     ];
     for (const e of exercises) await DB.put('exercises', e);
     const workouts = [
@@ -270,7 +270,7 @@ const App = {
     ];
     for (const w of workouts) await DB.put('workouts', w);
     await DB.put('settings', { id: 'schedule', workoutIds: ['workout-a', 'workout-b'] });
-    await DB.put('settings', { id: 'units', value: 'lbs' });
+    await DB.put('settings', { id: 'units', value: 'kg' });
   },
 
   // ── Business logic ────────────────────────────────────────────────────────
@@ -345,7 +345,7 @@ const App = {
             return `<div class="ex-preview-row">
               <div class="ex-preview-name">${e?.name || ex.exerciseId}</div>
               <div class="ex-preview-sets">${ex.sets}&times;${ex.reps}</div>
-              <div class="ex-preview-weight">${w} ${e?.unit||'lbs'}</div>
+              <div class="ex-preview-weight">${w} ${e?.unit||'kg'}</div>
             </div>`;
           }).join('')}
         </div>
@@ -425,7 +425,7 @@ const App = {
               <input class="winput" id="wi-${ei}" type="number" value="${ex.weight}"
                 onchange="App.setW(${ei},+this.value)" oninput="App.setW(${ei},+this.value)">
               <button class="wbtn" onclick="App.adjW(${ei},${inc})">+</button>
-              <span class="wunit">${e?.unit||'lbs'}</span>
+              <span class="wunit">${e?.unit||'kg'}</span>
             </div>
           </div>
           <div class="sets-row">
@@ -542,7 +542,7 @@ const App = {
         <div class="ex-block">
           <div class="ex-block-hdr">
             <div class="ex-block-name">${e?.name||ex.exerciseId}</div>
-            <div class="ex-block-target">${ex.weight} ${e?.unit||'lbs'} &nbsp;&middot;&nbsp; ${done}/${ex.targetSets} sets of ${ex.targetReps} reps</div>
+            <div class="ex-block-target">${ex.weight} ${e?.unit||'kg'} &nbsp;&middot;&nbsp; ${done}/${ex.targetSets} sets of ${ex.targetReps} reps</div>
           </div>
           <div style="padding:10px 16px 14px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)">
             ${ex.sets.map((s,i) => `
@@ -568,7 +568,7 @@ const App = {
   // ── Settings ──────────────────────────────────────────────────────────────
   async renderSettings() {
     const units = await DB.get('settings', 'units');
-    const u = units?.value || 'lbs';
+    const u = units?.value || 'kg';
     document.getElementById('content').innerHTML = `
       <div class="ph"><div class="ph-title">Settings</div></div>
       <div class="gap"></div>
@@ -632,7 +632,7 @@ const App = {
   async renderExerciseEdit() {
     const { exerciseId } = this.pd;
     const ex = exerciseId ? await DB.get('exercises', exerciseId) : null;
-    this._unit = ex?.unit || 'lbs';
+    this._unit = ex?.unit || 'kg';
     document.getElementById('content').innerHTML = `
       <div class="ph">
         <button class="back" onclick="App.go('exercises')">
@@ -674,7 +674,7 @@ const App = {
     const name = document.getElementById('ex-name').value.trim();
     const startWeight = parseFloat(document.getElementById('ex-start').value);
     const increment = parseFloat(document.getElementById('ex-inc').value);
-    const unit = this._unit || 'lbs';
+    const unit = this._unit || 'kg';
     if (!name) { this.toast('Enter a name'); return; }
     if (isNaN(startWeight) || isNaN(increment)) { this.toast('Fill in all fields'); return; }
     await DB.put('exercises', { id: exerciseId || this.uid(), name, startWeight, increment, unit });
