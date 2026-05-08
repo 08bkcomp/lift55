@@ -147,6 +147,12 @@ a.row, button.row, [onclick].row { cursor: pointer; }
 /* Spacer */
 .gap { height: 16px; }
 .gap-sm { height: 8px; }
+
+/* Sync */
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block; flex-shrink: 0; }
+.sync-dot.syncing { background: var(--accent); animation: pulse 1s infinite; }
+.sync-dot.error { background: var(--danger); }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
 </style>
 </head>
 <body>
@@ -169,6 +175,11 @@ a.row, button.row, [onclick].row { cursor: pointer; }
   </nav>
 </div>
 <script>
+// ── Google Client ID ─────────────────────────────────────────────────────────
+// Create one at console.cloud.google.com → APIs & Services → Credentials
+// Add your GitHub Pages URL as an Authorized JavaScript Origin
+const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+
 // ── IndexedDB ────────────────────────────────────────────────────────────────
 const DB = (() => {
   let db;
@@ -188,8 +199,194 @@ const DB = (() => {
   const get = (s, k) => new Promise((r, j) => { const q = tx(s).get(k); q.onsuccess = () => r(q.result); q.onerror = j; });
   const put = (s, o) => new Promise((r, j) => { const q = tx(s, 'readwrite').put(o); q.onsuccess = () => r(q.result); q.onerror = j; });
   const del = (s, k) => new Promise((r, j) => { const q = tx(s, 'readwrite').delete(k); q.onsuccess = () => r(); q.onerror = j; });
-  return { open, all, get, put, del };
+  const clear = s => new Promise((r, j) => { const q = tx(s, 'readwrite').clear(); q.onsuccess = () => r(); q.onerror = j; });
+  return { open, all, get, put, del, clear };
 })();
+
+// ── Google Auth ───────────────────────────────────────────────────────────────
+const GAuth = {
+  user: null,
+  token: null,
+  _client: null,
+  _resolve: null,
+
+  get configured() { return GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE' && GOOGLE_CLIENT_ID.length > 10; },
+
+  async init() {
+    const saved = localStorage.getItem('lift55_guser');
+    if (saved) { try { this.user = JSON.parse(saved); } catch {} }
+    if (!this.configured) return;
+    try {
+      await this._loadGIS();
+      this._client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        callback: resp => {
+          const resolve = this._resolve; this._resolve = null;
+          if (resp.error || !resp.access_token) { if (resolve) resolve(null); return; }
+          this.token = resp.access_token;
+          if (resolve) resolve(this.token);
+        },
+      });
+      if (this.user) {
+        // Silent refresh for returning user
+        await this._requestToken(true);
+      }
+    } catch (e) { console.warn('GAuth init failed:', e); }
+  },
+
+  _loadGIS() {
+    return new Promise((res, rej) => {
+      if (window.google?.accounts) { res(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  },
+
+  _requestToken(silent = false) {
+    return new Promise(res => {
+      if (!this._client) { res(null); return; }
+      this._resolve = res;
+      this._client.requestAccessToken({
+        prompt: silent ? 'none' : 'select_account',
+        hint: silent ? (this.user?.email || '') : '',
+      });
+      if (silent) setTimeout(() => { if (this._resolve) { this._resolve(null); this._resolve = null; } }, 8000);
+    });
+  },
+
+  async signIn() {
+    if (!this._client) throw new Error('Google not initialized — check Client ID');
+    const token = await this._requestToken(false);
+    if (!token) throw new Error('Sign in cancelled');
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error('Could not fetch user info');
+    this.user = await resp.json();
+    localStorage.setItem('lift55_guser', JSON.stringify(this.user));
+    return this.user;
+  },
+
+  signOut() {
+    if (this.token) { try { google.accounts.oauth2.revoke(this.token, () => {}); } catch {} }
+    this.token = null; this.user = null;
+    localStorage.removeItem('lift55_guser');
+  },
+
+  isSignedIn() { return !!this.user; },
+
+  async ensureToken() {
+    if (this.token) return this.token;
+    return this._requestToken(true);
+  },
+};
+
+// ── Google Drive Sync ─────────────────────────────────────────────────────────
+const GDrive = {
+  _fileId: null,
+  _lastSync: null,
+  _pushTimer: null,
+  status: 'idle',
+
+  async push() {
+    if (!GAuth.isSignedIn()) return;
+    this._setStatus('syncing');
+    try {
+      const token = await GAuth.ensureToken();
+      if (!token) throw new Error('no token');
+      const fileId = await this._getOrCreate(token);
+      const body = JSON.stringify(await this._export());
+      const r = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body }
+      );
+      if (!r.ok) throw new Error(`upload ${r.status}`);
+      this._lastSync = new Date();
+      this._setStatus('idle');
+    } catch (e) {
+      console.error('Drive push:', e);
+      this._setStatus('error');
+    }
+  },
+
+  async pull() {
+    if (!GAuth.isSignedIn()) return false;
+    this._setStatus('syncing');
+    try {
+      const token = await GAuth.ensureToken();
+      if (!token) { this._setStatus('idle'); return false; }
+      const fileId = await this._findFile(token);
+      if (!fileId) { this._setStatus('idle'); return false; }
+      this._fileId = fileId;
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(`download ${r.status}`);
+      await this._import(await r.json());
+      this._lastSync = new Date();
+      this._setStatus('idle');
+      return true;
+    } catch (e) {
+      console.error('Drive pull:', e);
+      this._setStatus('error');
+      return false;
+    }
+  },
+
+  schedulePush() {
+    clearTimeout(this._pushTimer);
+    this._pushTimer = setTimeout(() => this.push(), 3000);
+  },
+
+  _setStatus(s) {
+    this.status = s;
+    const el = document.getElementById('sync-dot');
+    if (!el) return;
+    el.className = 'sync-dot' + (s === 'syncing' ? ' syncing' : s === 'error' ? ' error' : '');
+    el.title = s === 'syncing' ? 'Syncing…' : s === 'error' ? 'Sync failed' : this._lastSync ? `Synced ${this._lastSync.toLocaleTimeString()}` : 'Synced';
+  },
+
+  async _getOrCreate(token) {
+    if (this._fileId) return this._fileId;
+    const id = await this._findFile(token);
+    if (id) { this._fileId = id; return id; }
+    const r = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'lift55-data.json', parents: ['appDataFolder'] }),
+    });
+    const f = await r.json();
+    this._fileId = f.id;
+    return f.id;
+  },
+
+  async _findFile(token) {
+    const r = await fetch(
+      "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'lift55-data.json'&fields=files(id)",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    return d.files?.[0]?.id || null;
+  },
+
+  async _export() {
+    const [exercises, workouts, logs, settings] = await Promise.all([
+      DB.all('exercises'), DB.all('workouts'), DB.all('logs'), DB.all('settings'),
+    ]);
+    return { version: 1, lastSynced: new Date().toISOString(), exercises, workouts, logs, settings };
+  },
+
+  async _import(data) {
+    if (!data?.version) return;
+    for (const store of ['exercises','workouts','logs','settings']) {
+      await DB.clear(store);
+      for (const item of (data[store] || [])) await DB.put(store, item);
+    }
+  },
+};
 
 // ── App ──────────────────────────────────────────────────────────────────────
 const App = {
@@ -199,10 +396,19 @@ const App = {
 
   async init() {
     await DB.open();
-    await this.seedDefaults();
     const saved = localStorage.getItem('lift55_aw');
     if (saved) { try { this.aw = JSON.parse(saved); } catch {} }
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    await GAuth.init();
+    if (GAuth.isSignedIn()) {
+      const pulled = await GDrive.pull();
+      if (!pulled) {
+        await this.seedDefaults();
+        await GDrive.push(); // first push of local data
+      }
+    } else {
+      await this.seedDefaults();
+    }
     this.render();
   },
 
@@ -238,6 +444,33 @@ const App = {
 
   uid: () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
   html: s => s,
+
+  // ── Google auth actions ───────────────────────────────────────────────────
+  async signIn() {
+    try {
+      await GAuth.signIn();
+      this.toast('Signed in');
+      const pulled = await GDrive.pull();
+      if (!pulled) await GDrive.push();
+    } catch (e) {
+      this.toast(e.message || 'Sign in failed');
+    }
+    this.renderSettings();
+  },
+
+  signOut() {
+    GAuth.signOut();
+    GDrive._fileId = null;
+    this.toast('Signed out');
+    this.renderSettings();
+  },
+
+  async syncNow() {
+    this.toast('Syncing…');
+    await GDrive.push();
+    this.toast(GDrive.status === 'error' ? 'Sync failed' : 'Synced!');
+    this.renderSettings();
+  },
 
   saveAW() {
     if (this.aw) localStorage.setItem('lift55_aw', JSON.stringify(this.aw));
@@ -318,8 +551,11 @@ const App = {
     const hasActive = !!this.aw;
 
     document.getElementById('content').innerHTML = `
-      <div class="ph"><div>
-        <div class="ph-title">Lift55</div>
+      <div class="ph"><div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="ph-title">Lift55</div>
+          ${GAuth.isSignedIn() ? `<span id="sync-dot" class="sync-dot${GDrive.status==='syncing'?' syncing':GDrive.status==='error'?' error':''}" title="${GDrive._lastSync?'Synced '+GDrive._lastSync.toLocaleTimeString():'Synced'}"></span>` : ''}
+        </div>
         <div class="ph-sub">${todayStr}</div>
       </div></div>
       <div class="gap"></div>
@@ -475,6 +711,7 @@ const App = {
       })),
     });
     this.aw = null; this.saveAW();
+    GDrive.schedulePush();
     this.toast('Workout saved!');
     this.go('home');
   },
@@ -561,6 +798,7 @@ const App = {
   async deleteLog(id) {
     if (!confirm('Delete this workout record?')) return;
     await DB.del('logs', id);
+    GDrive.schedulePush();
     this.toast('Deleted');
     this.go('history');
   },
@@ -569,9 +807,57 @@ const App = {
   async renderSettings() {
     const units = await DB.get('settings', 'units');
     const u = units?.value || 'kg';
+    const signedIn = GAuth.isSignedIn();
+    const lastSync = GDrive._lastSync;
+    const syncErr = GDrive.status === 'error';
+
     document.getElementById('content').innerHTML = `
       <div class="ph"><div class="ph-title">Settings</div></div>
       <div class="gap"></div>
+
+      <div class="sec-hdr"><span class="sec-title">Google Drive Sync</span></div>
+      ${!GAuth.configured ? `
+      <div class="card"><div class="card-inner" style="font-size:14px;color:var(--text2);line-height:1.7">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">Setup required</div>
+        1. Go to <b>console.cloud.google.com</b><br>
+        2. Create a project &rarr; Enable <b>Google Drive API</b><br>
+        3. Credentials &rarr; Create <b>OAuth 2.0 Client ID</b> (Web app)<br>
+        4. Add <b>https://08bkcomp.github.io</b> as authorised JS origin<br>
+        5. Paste the Client ID into <code>GOOGLE_CLIENT_ID</code> in index.html
+      </div></div>
+      ` : signedIn ? `
+      <div class="list">
+        <div class="row">
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0">${(GAuth.user.name||'?')[0].toUpperCase()}</div>
+          <div class="row-main">
+            <div class="row-title">${GAuth.user.name||'Signed in'}</div>
+            <div class="row-sub">${GAuth.user.email||''}</div>
+          </div>
+          <span class="sync-dot${syncErr?' error':''}" style="margin-left:4px" title="${syncErr?'Sync error':lastSync?'Synced '+lastSync.toLocaleTimeString():'Not yet synced'}"></span>
+        </div>
+        <div class="srow" onclick="App.syncNow()">
+          <span class="srow-label">${syncErr ? 'Retry Sync' : 'Sync Now'}</span>
+          <span style="font-size:13px;color:var(--text2)">${lastSync ? lastSync.toLocaleTimeString() : 'Never'}</span>
+        </div>
+        <div class="srow" onclick="App.signOut()">
+          <span class="srow-label" style="color:var(--danger)">Sign Out</span>
+        </div>
+      </div>
+      ` : `
+      <div class="list">
+        <div class="srow" onclick="App.signIn()">
+          <svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;margin-right:4px">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          <span class="srow-label">Sign in with Google</span>
+        </div>
+      </div>
+      `}
+
+      <div class="sec-hdr" style="margin-top:16px"><span class="sec-title">Programme</span></div>
       <div class="list">
         <div class="srow" onclick="App.go('exercises')">
           <span class="srow-label">Exercises</span>
@@ -586,6 +872,7 @@ const App = {
           <span class="srow-chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></span>
         </div>
       </div>
+
       <div class="sec-hdr" style="margin-top:16px"><span class="sec-title">Units</span></div>
       <div style="margin:4px 16px">
         <div class="toggle">
@@ -599,6 +886,7 @@ const App = {
 
   async setUnits(val) {
     await DB.put('settings', { id: 'units', value: val });
+    GDrive.schedulePush();
     this.renderSettings();
   },
 
@@ -678,6 +966,7 @@ const App = {
     if (!name) { this.toast('Enter a name'); return; }
     if (isNaN(startWeight) || isNaN(increment)) { this.toast('Fill in all fields'); return; }
     await DB.put('exercises', { id: exerciseId || this.uid(), name, startWeight, increment, unit });
+    GDrive.schedulePush();
     this.toast('Saved');
     this.go('exercises');
   },
@@ -690,6 +979,7 @@ const App = {
       w.exercises = w.exercises.filter(e => e.exerciseId !== id);
       await DB.put('workouts', w);
     }
+    GDrive.schedulePush();
     this.toast('Deleted');
     this.go('exercises');
   },
@@ -815,6 +1105,7 @@ const App = {
     if (!name) { this.toast('Enter a workout name'); return; }
     await DB.put('workouts', { id: workoutId || this.uid(), name, exercises: this._weExs });
     this._weId = null;
+    GDrive.schedulePush();
     this.toast('Saved');
     this.go('workouts');
   },
@@ -825,6 +1116,7 @@ const App = {
     const sched = await DB.get('settings', 'schedule');
     if (sched) { sched.workoutIds = sched.workoutIds.filter(x => x !== id); await DB.put('settings', sched); }
     this._weId = null;
+    GDrive.schedulePush();
     this.toast('Deleted');
     this.go('workouts');
   },
@@ -872,6 +1164,7 @@ const App = {
     const sched = await DB.get('settings','schedule') || { id: 'schedule', workoutIds: [] };
     sched.workoutIds.push(workoutId);
     await DB.put('settings', sched);
+    GDrive.schedulePush();
     this.renderSchedule();
   },
 
@@ -880,6 +1173,7 @@ const App = {
     if (!sched) return;
     sched.workoutIds.splice(idx, 1);
     await DB.put('settings', sched);
+    GDrive.schedulePush();
     this.renderSchedule();
   },
 };
