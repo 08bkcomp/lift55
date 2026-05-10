@@ -210,12 +210,10 @@ const GAuth = {
   _client: null,
   _resolve: null,
 
-  get configured() { return GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE' && GOOGLE_CLIENT_ID.length > 10; },
-
   async init() {
     const saved = localStorage.getItem('lift55_guser');
     if (saved) { try { this.user = JSON.parse(saved); } catch {} }
-    if (!this.configured) return;
+    if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
     try {
       await this._loadGIS();
       this._client = google.accounts.oauth2.initTokenClient({
@@ -816,16 +814,7 @@ const App = {
       <div class="gap"></div>
 
       <div class="sec-hdr"><span class="sec-title">Google Drive Sync</span></div>
-      ${!GAuth.configured ? `
-      <div class="card"><div class="card-inner" style="font-size:14px;color:var(--text2);line-height:1.7">
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px">Setup required</div>
-        1. Go to <b>console.cloud.google.com</b><br>
-        2. Create a project &rarr; Enable <b>Google Drive API</b><br>
-        3. Credentials &rarr; Create <b>OAuth 2.0 Client ID</b> (Web app)<br>
-        4. Add <b>https://08bkcomp.github.io</b> as authorised JS origin<br>
-        5. Paste the Client ID into <code>GOOGLE_CLIENT_ID</code> in index.html
-      </div></div>
-      ` : signedIn ? `
+      ${signedIn ? `
       <div class="list">
         <div class="row">
           <div style="width:38px;height:38px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0">${(GAuth.user.name||'?')[0].toUpperCase()}</div>
