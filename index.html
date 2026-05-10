@@ -215,30 +215,33 @@ const GAuth = {
     if (saved) { try { this.user = JSON.parse(saved); } catch {} }
     if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
     try {
-      await this._loadGIS();
-      this._client = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
-        callback: resp => {
-          const resolve = this._resolve; this._resolve = null;
-          if (resp.error || !resp.access_token) { if (resolve) resolve(null); return; }
-          this.token = resp.access_token;
-          if (resolve) resolve(this.token);
-        },
-      });
-      if (this.user) {
-        // Silent refresh for returning user
-        await this._requestToken(true);
-      }
-    } catch (e) { console.warn('GAuth init failed:', e); }
+      await this._ensureClient();
+      if (this.user) await this._requestToken(true);
+    } catch (e) { console.warn('GAuth init:', e); }
+  },
+
+  async _ensureClient() {
+    if (this._client) return;
+    await this._loadGIS();
+    this._client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+      callback: resp => {
+        const resolve = this._resolve; this._resolve = null;
+        if (resp.error || !resp.access_token) { if (resolve) resolve(null); return; }
+        this.token = resp.access_token;
+        if (resolve) resolve(this.token);
+      },
+    });
   },
 
   _loadGIS() {
     return new Promise((res, rej) => {
-      if (window.google?.accounts) { res(); return; }
+      if (window.google?.accounts?.oauth2) { res(); return; }
       const s = document.createElement('script');
       s.src = 'https://accounts.google.com/gsi/client';
-      s.onload = res; s.onerror = rej;
+      s.onload = () => { if (window.google?.accounts?.oauth2) res(); else rej(new Error('GIS loaded but oauth2 missing')); };
+      s.onerror = () => rej(new Error('Failed to load GIS script'));
       document.head.appendChild(s);
     });
   },
@@ -256,7 +259,7 @@ const GAuth = {
   },
 
   async signIn() {
-    if (!this._client) throw new Error('Google not initialized — check Client ID');
+    await this._ensureClient();
     const token = await this._requestToken(false);
     if (!token) throw new Error('Sign in cancelled');
     const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
